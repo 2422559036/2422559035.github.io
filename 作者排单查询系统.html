@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>封面设计订单查询系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+        }
+        body {
+            background-color: #f8f9fa;
+            padding: 30px 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #007bff;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        input {
+            padding: 12px 15px;
+            width: 100%;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+        .tips {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        #query-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 14px;
+            width: 100%;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+        #query-btn:hover {
+            background-color: #218838;
+        }
+        .query-result {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #e9f7fe;
+            border: 1px solid #b3d9f2;
+            display: none;
+        }
+        .query-result h3 {
+            color: #007bff;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #b3d9f2;
+            text-align: center;
+        }
+        .query-result p {
+            margin-bottom: 12px;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        .query-result p span {
+            font-weight: 600;
+            color: #212529;
+        }
+        .queue-number {
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .status-design {
+            color: #007bff;
+            font-weight: bold;
+        }
+        .status-queued {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-waiting {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .status-completed {
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>封面设计订单查询</h1>
+        
+        <div class="form-group">
+            <label>同步码（设计师提供的6位码）</label>
+            <input id="q-code" placeholder="例如：8A7B9C（大小写均可）">
+            <div class="tips">提示：同步码由设计师生成并提供，用于同步最新订单数据</div>
+        </div>
+        
+        <div class="form-group">
+            <label>作者笔名</label>
+            <input id="q-author" placeholder="请输入下单时填写的作者笔名">
+            <div class="tips">提示：请与下单时填写的笔名完全一致（区分大小写）</div>
+        </div>
+        
+        <div class="form-group">
+            <label>书籍名称</label>
+            <input id="q-book" placeholder="请输入下单时填写的书籍名称">
+            <div class="tips">提示：请与下单时填写的书名完全一致（区分大小写）</div>
+        </div>
+        
+        <button id="query-btn">🔍 立即查询订单</button>
+        
+        <div class="query-result" id="q-result">
+            <h3 id="q-title"></h3>
+            <p>订单类型：<span id="q-type"></span></p>
+            <p>排队序号：<span id="q-queue" class="queue-number"></span></p>
+            <p>预计出单时间：<span id="q-time"></span></p>
+            <p>订单状态：<span id="q-status"></span></p>
+        </div>
+    </div>
+
+    <script>
+        // 读取本地存储的同步码映射数据（与原排单系统共用）
+        let syncCodeMap = JSON.parse(localStorage.getItem('syncCodeMap')) || {};
+
+        // 工具函数（保留原系统的核心计算逻辑）
+        function fmt(date) {
+            return date.toISOString().split('T')[0];
+        }
+        function addDays(dateStr, n) {
+            const d = new Date(dateStr);
+            d.setDate(d.getDate() + n);
+            return fmt(d);
+        }
+        function time(dateStr) {
+            return new Date(dateStr).getTime();
+        }
+
+        // 绑定查询按钮点击事件
+        document.getElementById('query-btn').onclick = () => {
+            // 清空之前的查询结果
+            document.getElementById('q-result').style.display = 'none';
+            
+            // 1. 验证同步码
+            const code = document.getElementById('q-code').value.trim().toUpperCase();
+            if (!code) {
+                alert('请输入设计师提供的同步码！');
+                return;
+            }
+
+            // 2. 验证同步码是否有效
+            const orderData = syncCodeMap[code];
+            if (!orderData) {
+                alert('无效的同步码，请核对后重新输入！');
+                return;
+            }
+            
+            // 3. 验证作者和书籍名称
+            const author = document.getElementById('q-author').value.trim();
+            const book = document.getElementById('q-book').value.trim();
+            if (!author || !book) { 
+                alert('作者笔名和书籍名称不能为空！'); 
+                return; 
+            }
+
+            // 4. 查找匹配的订单（严格匹配，保持与原系统一致）
+            const targetOrder = orderData.find(o =>
+                o.authorName.trim() === author &&
+                o.bookName.trim() === book
+            );
+            
+            if (!targetOrder) { 
+                alert('未找到匹配的订单，请核对作者笔名和书籍名称！'); 
+                return; 
+            }
+
+            // 5. 解析订单信息并展示
+            // 处理订单类型
+            let typeName = '';
+            if (targetOrder.type === 'specified') {
+                typeName = '指定日期';
+            } else if (targetOrder.type.startsWith('urgent')) {
+                typeName = targetOrder.type.replace('urgent_', '加急') + '天';
+            } else {
+                typeName = '普通排单';
+            }
+
+            // 计算排队序号
+            const sortedAll = [...orderData].sort((x,y)=>time(x.expectedTime)-time(y.expectedTime));
+            const undoneOrders = sortedAll.filter(x=>!x.completed);
+            const queuePos = undoneOrders.findIndex(x=>x.id === targetOrder.id) + 1;
+
+            // 处理订单状态
+            let statusText = '';
+            let statusClass = '';
+            if (targetOrder.completed) {
+                statusText = '已完成';
+                statusClass = 'status-completed';
+            } else {
+                if (queuePos === 1) {
+                    statusText = '设计中';
+                    statusClass = 'status-design';
+                } else if (queuePos >= 2 && queuePos <= 4) { // 原逻辑是1-3为已排单，这里对应pos+1后是2-4
+                    statusText = '已排单';
+                    statusClass = 'status-queued';
+                } else {
+                    statusText = '排单中';
+                    statusClass = 'status-waiting';
+                }
+            }
+
+            // 6. 填充查询结果
+            document.getElementById('q-title').textContent = `${targetOrder.bookName}（${targetOrder.authorName}）`;
+            document.getElementById('q-type').textContent = typeName;
+            document.getElementById('q-queue').textContent = targetOrder.completed ? '已完成，无需排队' : queuePos;
+            document.getElementById('q-time').textContent = targetOrder.completed ? '已完成制作' : targetOrder.expectedTime;
+            document.getElementById('q-status').textContent = statusText;
+            document.getElementById('q-status').className = statusClass;
+
+            // 7. 显示查询结果
+            document.getElementById('q-result').style.display = 'block';
+        };
+    </script>
+</body>
+</html>
